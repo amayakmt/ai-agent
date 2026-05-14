@@ -212,4 +212,4 @@ uv run test_run_python_file.py
 
 ## License
 
-No license has been declared for this project. Treat it as "all rights reserved" until a `LICENSE` file is added.
+MIT
