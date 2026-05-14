@@ -1,10 +1,9 @@
-import os
+import os, argparse, sys
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-import argparse
-from prompts import system_prompt
-from call_function import available_functions, call_function
+from agent import generate_content
+from config import MAX_ITERS
 
 def main():
     # Load Gemini API
@@ -28,54 +27,30 @@ def main():
     user_prompt = args.user_prompt # user input
     verbose_arg = args.verbose # verbose argument
 
+    # Print the executable prompt
+    if verbose_arg:
+        print(f'User prompt: {user_prompt}')
+
     # Store the conversation history
     messages = [types.Content(role="user", parts=[types.Part(text=user_prompt)])]
 
-    # Execute Gemini-2.5-Flash model
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=messages,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=0,
-            tools=[available_functions]),
-    )
+    # Execute the agent
+    for _ in range(MAX_ITERS):
 
-    # Checks if the output contains usage_metadata (True if ran correctly)
-    if not response.usage_metadata:
-        raise RuntimeError('API request failed.')
+        model_response, function_call_results = generate_content(client, messages, verbose_arg)
 
-    # Print the results
-    if verbose_arg:
-        print(f'User prompt: {user_prompt}')
-        print(f'Prompt tokens: {response.usage_metadata.prompt_token_count}')
-        print(f'Response tokens: {response.usage_metadata.candidates_token_count}')
+        for candidate in model_response.candidates:
+            messages.append(candidate.content)
+
+        messages.append(types.Content(role="user", parts=function_call_results))
+        
+        if not function_call_results:
+            print(model_response.text)
+            break
     
-    if response.function_calls:
-
-        function_results_list = []
-        for function_call in response.function_calls:
-
-            function_call_result = call_function(function_call, verbose_arg)
-
-            if not function_call_result.parts:
-                raise Exception(f'Error occurred: {Exception}')
-            
-            response_property = function_call_result.parts[0].function_response
-            if not response_property:
-                raise Exception(f'Error occurred: {Exception}')
-
-            response_field = response_property.response
-            if not response_field:
-                raise Exception(f'Error occurred: {Exception}')
-
-            function_results_list.extend(function_call_result.parts[0])
-
-            if verbose_arg:
-                print(f"-> {response_field}")
-
     else:
-        print(response.text)
+        print(f'Error: agent did not produce a final response within {MAX_ITERS} iterations.')
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
